@@ -31,7 +31,7 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
   if (interaction.commandName !== 'rep') return;
 
-  // defer reply without ephemeral flag (public response)
+  // public reply (no ephemeral flag)
   await interaction.deferReply();
 
   const userOpt = interaction.options.getUser('user');
@@ -96,7 +96,12 @@ client.on('messageCreate', async message => {
   console.log(`message received: ${message.content}`);
   const repWords = ['thanks', 'ty', 'tysm'];
   if (repWords.some(word => message.content.toLowerCase().includes(word))) {
+    // check if the only mention is self
     const validUsers = message.mentions.users.filter(user => user.id !== message.author.id);
+    if (message.mentions.users.size > 0 && validUsers.size === 0) {
+      message.channel.send("can't rep yourself");
+      return;
+    }
     if (validUsers.size > 0) {
       const ackUsers = [];
       for (const user of validUsers.values()) {
