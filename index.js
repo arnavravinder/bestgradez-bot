@@ -31,7 +31,7 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
   if (interaction.commandName !== 'rep') return;
 
-  // defer without ephemeral flag (public response)
+  // defer reply without ephemeral flag (public response)
   await interaction.deferReply();
 
   const userOpt = interaction.options.getUser('user');
@@ -96,22 +96,29 @@ client.on('messageCreate', async message => {
   console.log(`message received: ${message.content}`);
   const repWords = ['thanks', 'ty', 'tysm'];
   if (repWords.some(word => message.content.toLowerCase().includes(word))) {
-    if (message.mentions.users.size > 0) {
-      message.mentions.users.forEach(async user => {
-        if (user.id === message.author.id) return;
+    const validUsers = message.mentions.users.filter(user => user.id !== message.author.id);
+    if (validUsers.size > 0) {
+      const ackUsers = [];
+      for (const user of validUsers.values()) {
         const docId = `${message.guild.id}_${user.id}`;
         const ref = db.collection('reps').doc(docId);
         try {
           await db.runTransaction(async t => {
             const doc = await t.get(ref);
-            if (!doc.exists) t.set(ref, { guildId: message.guild.id, userId: user.id, count: 1 });
-            else t.update(ref, { count: doc.data().count + 1 });
+            if (!doc.exists) {
+              t.set(ref, { guildId: message.guild.id, userId: user.id, count: 1 });
+            } else {
+              t.update(ref, { count: doc.data().count + 1 });
+            }
           });
-          console.log(`added rep to ${user.tag} via message from ${message.author.tag}`);
+          ackUsers.push(`<@${user.id}>`);
         } catch (error) {
           console.error('error updating rep from message:', error);
         }
-      });
+      }
+      if (ackUsers.length > 0) {
+        message.channel.send(`rep given to ${ackUsers.join(', ')}!`);
+      }
     }
   }
 });
