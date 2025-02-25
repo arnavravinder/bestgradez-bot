@@ -17,18 +17,22 @@ const client = new Client({
 
 client.once('ready', () => {
   console.log('bot online');
-  client.user.setPresence({
-    activities: [{ name: 'reps', type: 'WATCHING' }],
-    status: 'online'
-  }).catch(console.error);
+  try {
+    client.user.setPresence({
+      activities: [{ name: 'reps', type: 'WATCHING' }],
+      status: 'online'
+    });
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
   if (interaction.commandName !== 'rep') return;
 
-  // use flags instead of ephemeral property to avoid deprecation warning
-  await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag
+  // defer without ephemeral flag (public response)
+  await interaction.deferReply();
 
   const userOpt = interaction.options.getUser('user');
   const action = interaction.options.getString('action');
