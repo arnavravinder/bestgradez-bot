@@ -4,7 +4,7 @@
     "main": "index.js",
     "scripts": {
       "start": "node index.js",
-      "build": "echo \"no build step required\" && exit 0"
+      "postinstall": "node deploy-commands.js"
     },
     "dependencies": {
       "discord.js": "^14.11.0",
