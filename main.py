@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger('rep_bot')
 
-# Add this near the beginning of your rep_bot.py file, just after imports
+# Helper function to validate guild IDs
 def is_valid_guild_id(guild_id_str):
     """Check if a string is a valid guild ID."""
     if not guild_id_str:
@@ -35,80 +35,10 @@ def is_valid_guild_id(guild_id_str):
     except ValueError:
         return False
 
-# Replace your existing !sync command with this enhanced version
-@bot.command(name="sync")
-async def sync_commands(ctx):
-    """Manually sync slash commands to this server"""
-    # Initial response
-    message = await ctx.send("🔄 Syncing commands to this server...")
-    
-    try:
-        # Always sync to the current guild for immediate results
-        await bot.tree.sync(guild=discord.Object(id=ctx.guild.id))
-        await message.edit(content="✅ Commands synced successfully to this server! They should appear momentarily.")
-        
-        # Log success
-        logger.info(f"Commands manually synced to guild ID: {ctx.guild.id}")
-    except Exception as e:
-        await message.edit(content=f"❌ Failed to sync commands: {str(e)}")
-        logger.error(f"Error during manual command sync: {e}")
-
-# Add this simpler command for debugging
-@bot.command(name="check")
-async def check_bot(ctx):
-    """Check if the bot is responding to text commands"""
-    await ctx.send(f"✅ Bot is online and responding to text commands! To register slash commands, use `!sync`")
-
-# Update the on_ready event with this more aggressive approach
-@bot.event
-async def on_ready():
-    logger.info(f"Bot is online as {bot.user.name}")
-    
-    # Set bot status
-    await bot.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.watching, 
-            name="reputation points"
-        ),
-        status=discord.Status.online
-    )
-    
-    # Log which guilds the bot is in
-    guilds = bot.guilds
-    logger.info(f"Bot is in {len(guilds)} guilds:")
-    for guild in guilds:
-        logger.info(f"- {guild.name} (ID: {guild.id})")
-    
-    # Try to sync commands to all guilds the bot is in
-    if os.getenv('SYNC_COMMANDS', 'false').lower() == 'true':
-        logger.info("Auto-syncing commands...")
-        
-        # First, check for specific guild ID in env var
-        guild_id = os.getenv('GUILD_ID')
-        if is_valid_guild_id(guild_id):
-            try:
-                # Sync to specific guild first
-                guild = discord.Object(id=int(guild_id))
-                await bot.tree.sync(guild=guild)
-                logger.info(f"Commands synced to specified guild ID: {guild_id}")
-            except Exception as e:
-                logger.error(f"Error syncing to specified guild: {e}")
-        
-        # Then try to sync to all current guilds
-        for guild in guilds:
-            try:
-                guild_obj = discord.Object(id=guild.id)
-                await bot.tree.sync(guild=guild_obj)
-                logger.info(f"Commands synced to guild: {guild.name} (ID: {guild.id})")
-            except Exception as e:
-                logger.error(f"Error syncing to guild {guild.name}: {e}")
-    else:
-        logger.info("Automatic command sync is disabled. Use !sync in your server to manually sync commands.")
-
 # Admin users who can remove reputation
 ADMIN_USERS = [
     # Add your user IDs here
-    1109714845768618044,  # Example user ID
+    123456789012345678,  # Example user ID
 ]
 
 # Cooldown settings
@@ -137,6 +67,14 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize Firebase: {e}")
     raise
+
+# Define intents
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+# Create bot instance
+bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Firebase helper functions
 async def give_rep(guild_id: str, user_id: str, channel_id: str, 
@@ -671,13 +609,145 @@ async def create_leaderboard_embed(
 # Rep trigger words
 rep_triggers = ['thanks', 'ty', 'tysm', 'thank you', 'appreciated']
 
-# Define intents
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
+# Events
+@bot.event
+async def on_ready():
+    logger.info(f"Bot is online as {bot.user.name}")
+    
+    # Set bot status
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.watching, 
+            name="reputation points"
+        ),
+        status=discord.Status.online
+    )
+    
+    # Log which guilds the bot is in
+    guilds = bot.guilds
+    logger.info(f"Bot is in {len(guilds)} guilds:")
+    for guild in guilds:
+        logger.info(f"- {guild.name} (ID: {guild.id})")
+    
+    # Try to sync commands to all guilds the bot is in
+    if os.getenv('SYNC_COMMANDS', 'false').lower() == 'true':
+        logger.info("Auto-syncing commands...")
+        
+        # First, check for specific guild ID in env var
+        guild_id = os.getenv('GUILD_ID')
+        if is_valid_guild_id(guild_id):
+            try:
+                # Sync to specific guild first
+                guild = discord.Object(id=int(guild_id))
+                await bot.tree.sync(guild=guild)
+                logger.info(f"Commands synced to specified guild ID: {guild_id}")
+            except Exception as e:
+                logger.error(f"Error syncing to specified guild: {e}")
+        
+        # Then try to sync to all current guilds
+        for guild in guilds:
+            try:
+                guild_obj = discord.Object(id=guild.id)
+                await bot.tree.sync(guild=guild_obj)
+                logger.info(f"Commands synced to guild: {guild.name} (ID: {guild.id})")
+            except Exception as e:
+                logger.error(f"Error syncing to guild {guild.name}: {e}")
+    else:
+        logger.info("Automatic command sync is disabled. Use !sync in your server to manually sync commands.")
 
-# Create bot instance
-bot = commands.Bot(command_prefix='!', intents=intents)
+@bot.event
+async def on_message(message: discord.Message):
+    """Listen for messages containing reputation trigger words."""
+    # Skip if message is from a bot
+    if message.author.bot:
+        return
+        
+    # Skip if not in a guild
+    if not message.guild:
+        return
+        
+    # Skip if no mentions
+    if not message.mentions:
+        return
+        
+    # Check if message contains a trigger word
+    content_lower = message.content.lower()
+    if not any(trigger in content_lower for trigger in rep_triggers):
+        return
+        
+    # Check for cooldown
+    if is_on_cooldown(message.author.id):
+        remaining = get_cooldown_remaining(message.author.id)
+        remaining_str = format_cooldown(remaining)
+        
+        await message.channel.send(
+            f"⏱️ **Cooldown Active**: {message.author.mention}, you must wait "
+            f"{remaining_str} before giving more reputation points.",
+            delete_after=10
+        )
+        return
+        
+    # Process valid mentions (no self-rep)
+    valid_mentions = [
+        user for user in message.mentions 
+        if user.id != message.author.id and not user.bot
+    ]
+    
+    if not valid_mentions:
+        return
+        
+    # Give rep to each valid mentioned user
+    successful_mentions = []
+    
+    for user in valid_mentions:
+        result = await give_rep(
+            str(message.guild.id),
+            str(user.id),
+            str(message.channel.id),
+            message.channel.name,
+            str(message.author.id)
+        )
+        
+        if result:
+            successful_mentions.append(user)
+    
+    # Send confirmation and update cooldown
+    if successful_mentions:
+        mentions_text = ", ".join(user.mention for user in successful_mentions)
+        
+        await message.channel.send(
+            f"🌟 {message.author.mention} has given a reputation point to {mentions_text}!"
+        )
+        
+        # Apply cooldown
+        update_cooldown(message.author.id)
+    
+    # Process commands
+    await bot.process_commands(message)
+
+# Command Sync
+@bot.command(name="sync")
+async def sync_commands(ctx):
+    """Manually sync slash commands to this server"""
+    # Initial response
+    message = await ctx.send("🔄 Syncing commands to this server...")
+    
+    try:
+        # Always sync to the current guild for immediate results
+        await bot.tree.sync(guild=discord.Object(id=ctx.guild.id))
+        await message.edit(content="✅ Commands synced successfully to this server! They should appear momentarily.")
+        
+        # Log success
+        logger.info(f"Commands manually synced to guild ID: {ctx.guild.id}")
+    except Exception as e:
+        await message.edit(content=f"❌ Failed to sync commands: {str(e)}")
+        logger.error(f"Error during manual command sync: {e}")
+
+# Debug command
+@bot.command(name="check")
+async def check_bot(ctx):
+    """Check if the bot is responding to text commands"""
+    await ctx.send(f"✅ Bot is online and responding to text commands! To register slash commands, use `!sync`")
 
 # Slash commands
 @bot.tree.command(
@@ -948,144 +1018,6 @@ async def remove_rep_command(
             f"⚠️ **Error**: {user.mention} has no reputation points to remove.",
             ephemeral=True
         )
-
-# Events
-@bot.event
-async def on_ready():
-    logger.info(f"Bot is online as {bot.user.name}")
-    
-    # Set bot status
-    await bot.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.watching, 
-            name="reputation points"
-        ),
-        status=discord.Status.online
-    )
-    
-    # Sync commands if SYNC_COMMANDS env var is set to true
-    if os.getenv('SYNC_COMMANDS', 'false').lower() == 'true':
-        logger.info("Auto-syncing commands...")
-        
-        try:
-            # Try global sync first
-            await bot.tree.sync()
-            logger.info("Commands synced globally")
-        except Exception as e:
-            logger.error(f"Error syncing commands globally: {e}")
-            logger.info("Attempting guild-specific sync as fallback...")
-            
-            # If a guild ID is specified, try to sync to it
-            guild_id = os.getenv('GUILD_ID')
-            if guild_id:
-                try:
-                    guild = discord.Object(id=int(guild_id))
-                    await bot.tree.sync(guild=guild)
-                    logger.info(f"Commands synced to guild ID: {guild_id}")
-                except Exception as guild_e:
-                    logger.error(f"Error syncing commands to guild: {guild_e}")
-                    logger.warning("Could not sync commands. You'll need to use the !sync command manually.")
-    else:
-        logger.info("Skipping command sync. Use !sync to sync commands manually.")
-
-@bot.event
-async def on_message(message: discord.Message):
-    """Listen for messages containing reputation trigger words."""
-    # Skip if message is from a bot
-    if message.author.bot:
-        return
-        
-    # Skip if not in a guild
-    if not message.guild:
-        return
-        
-    # Skip if no mentions
-    if not message.mentions:
-        return
-        
-    # Check if message contains a trigger word
-    content_lower = message.content.lower()
-    if not any(trigger in content_lower for trigger in rep_triggers):
-        return
-        
-    # Check for cooldown
-    if is_on_cooldown(message.author.id):
-        remaining = get_cooldown_remaining(message.author.id)
-        remaining_str = format_cooldown(remaining)
-        
-        await message.channel.send(
-            f"⏱️ **Cooldown Active**: {message.author.mention}, you must wait "
-            f"{remaining_str} before giving more reputation points.",
-            delete_after=10
-        )
-        return
-        
-    # Process valid mentions (no self-rep)
-    valid_mentions = [
-        user for user in message.mentions 
-        if user.id != message.author.id and not user.bot
-    ]
-    
-    if not valid_mentions:
-        return
-        
-    # Give rep to each valid mentioned user
-    successful_mentions = []
-    
-    for user in valid_mentions:
-        result = await give_rep(
-            str(message.guild.id),
-            str(user.id),
-            str(message.channel.id),
-            message.channel.name,
-            str(message.author.id)
-        )
-        
-        if result:
-            successful_mentions.append(user)
-    
-    # Send confirmation and update cooldown
-    if successful_mentions:
-        mentions_text = ", ".join(user.mention for user in successful_mentions)
-        
-        await message.channel.send(
-            f"🌟 {message.author.mention} has given a reputation point to {mentions_text}!"
-        )
-        
-        # Apply cooldown
-        update_cooldown(message.author.id)
-    
-    # Process commands
-    await bot.process_commands(message)
-
-# Manual command sync command (owner only)
-@bot.command(name="sync", hidden=True)
-async def sync_commands(ctx):
-    """Sync slash commands (Requires manage_guild permission)"""
-    # Check if user has permission
-    if not ctx.author.guild_permissions.administrator and not await bot.is_owner(ctx.author):
-        await ctx.send("⚠️ You need administrator permission to sync commands.")
-        return
-        
-    # Send initial response
-    await ctx.send("🔄 Syncing commands...")
-    
-    try:
-        # Try global sync first (this will work for most cases)
-        await bot.tree.sync()
-        await ctx.send("✅ Commands synced globally!")
-    except Exception as e:
-        logger.error(f"Error syncing commands globally: {e}")
-        await ctx.send(f"❌ Failed to sync commands globally: {e}")
-        
-        # If a guild ID is specified, try to sync to it
-        try:
-            # You can try syncing to the current guild as fallback
-            await bot.tree.sync(guild=ctx.guild)
-            await ctx.send(f"✅ Commands synced to current guild as fallback!")
-        except Exception as guild_e:
-            logger.error(f"Error syncing commands to guild: {guild_e}")
-            await ctx.send(f"❌ Failed to sync commands to guild: {guild_e}")
 
 # Run the bot
 if __name__ == "__main__":
