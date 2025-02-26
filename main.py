@@ -885,14 +885,24 @@ async def on_ready():
     if os.getenv('SYNC_COMMANDS', 'false').lower() == 'true':
         logger.info("Auto-syncing commands...")
         
-        # Sync to specific guild if GUILD_ID is set
-        if os.getenv('GUILD_ID'):
-            guild = discord.Object(id=int(os.getenv('GUILD_ID')))
-            await bot.tree.sync(guild=guild)
-            logger.info(f"Commands synced to guild ID: {os.getenv('GUILD_ID')}")
-        else:
+        try:
+            # Try global sync first
             await bot.tree.sync()
             logger.info("Commands synced globally")
+        except Exception as e:
+            logger.error(f"Error syncing commands globally: {e}")
+            logger.info("Attempting guild-specific sync as fallback...")
+            
+            # If a guild ID is specified, try to sync to it
+            guild_id = os.getenv('GUILD_ID')
+            if guild_id:
+                try:
+                    guild = discord.Object(id=int(guild_id))
+                    await bot.tree.sync(guild=guild)
+                    logger.info(f"Commands synced to guild ID: {guild_id}")
+                except Exception as guild_e:
+                    logger.error(f"Error syncing commands to guild: {guild_e}")
+                    logger.warning("Could not sync commands. You'll need to use the !sync command manually.")
     else:
         logger.info("Skipping command sync. Use !sync to sync commands manually.")
 
@@ -968,18 +978,37 @@ async def on_message(message: discord.Message):
 
 # Manual command sync command (owner only)
 @bot.command(name="sync", hidden=True)
-@commands.is_owner()
-async def sync_commands(ctx, guild_id: str = None):
-    """Sync slash commands (Bot owner only)"""
-    if guild_id:
-        guild = discord.Object(id=int(guild_id))
-        bot.tree.copy_global_to(guild=guild)
-        await bot.tree.sync(guild=guild)
-        await ctx.send(f"Commands synced to guild ID: {guild_id}")
-    else:
+async def sync_commands(ctx):
+    """Sync slash commands (Requires manage_guild permission)"""
+    # Check if user has permission
+    if not ctx.author.guild_permissions.administrator and not await bot.is_owner(ctx.author):
+        await ctx.send("⚠️ You need administrator permission to sync commands.")
+        return
+        
+    # Send initial response
+    await ctx.send("🔄 Syncing commands...")
+    
+    try:
+        # Try global sync first (this will work for most cases)
         await bot.tree.sync()
-        await ctx.send("Commands synced globally (may take up to an hour to propagate)")
+        await ctx.send("✅ Commands synced globally!")
+    except Exception as e:
+        logger.error(f"Error syncing commands globally: {e}")
+        await ctx.send(f"❌ Failed to sync commands globally: {e}")
+        
+        # If a guild ID is specified, try to sync to it
+        try:
+            # You can try syncing to the current guild as fallback
+            await bot.tree.sync(guild=ctx.guild)
+            await ctx.send(f"✅ Commands synced to current guild as fallback!")
+        except Exception as guild_e:
+            logger.error(f"Error syncing commands to guild: {guild_e}")
+            await ctx.send(f"❌ Failed to sync commands to guild: {guild_e}")
 
 # Run the bot
 if __name__ == "__main__":
+    # If there's an issue with the filename, make sure we're using the right one
+    script_name = os.path.basename(__file__)
+    logger.info(f"Starting bot from script: {script_name}")
+    
     bot.run(os.getenv('DISCORD_TOKEN'))
