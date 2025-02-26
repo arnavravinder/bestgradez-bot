@@ -23,10 +23,92 @@ logging.basicConfig(
 )
 logger = logging.getLogger('rep_bot')
 
+# Add this near the beginning of your rep_bot.py file, just after imports
+def is_valid_guild_id(guild_id_str):
+    """Check if a string is a valid guild ID."""
+    if not guild_id_str:
+        return False
+    try:
+        # Guild IDs are numeric and usually 17-19 digits
+        guild_id = int(guild_id_str)
+        return 10000000000000000 <= guild_id <= 9999999999999999999
+    except ValueError:
+        return False
+
+# Replace your existing !sync command with this enhanced version
+@bot.command(name="sync")
+async def sync_commands(ctx):
+    """Manually sync slash commands to this server"""
+    # Initial response
+    message = await ctx.send("🔄 Syncing commands to this server...")
+    
+    try:
+        # Always sync to the current guild for immediate results
+        await bot.tree.sync(guild=discord.Object(id=ctx.guild.id))
+        await message.edit(content="✅ Commands synced successfully to this server! They should appear momentarily.")
+        
+        # Log success
+        logger.info(f"Commands manually synced to guild ID: {ctx.guild.id}")
+    except Exception as e:
+        await message.edit(content=f"❌ Failed to sync commands: {str(e)}")
+        logger.error(f"Error during manual command sync: {e}")
+
+# Add this simpler command for debugging
+@bot.command(name="check")
+async def check_bot(ctx):
+    """Check if the bot is responding to text commands"""
+    await ctx.send(f"✅ Bot is online and responding to text commands! To register slash commands, use `!sync`")
+
+# Update the on_ready event with this more aggressive approach
+@bot.event
+async def on_ready():
+    logger.info(f"Bot is online as {bot.user.name}")
+    
+    # Set bot status
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.watching, 
+            name="reputation points"
+        ),
+        status=discord.Status.online
+    )
+    
+    # Log which guilds the bot is in
+    guilds = bot.guilds
+    logger.info(f"Bot is in {len(guilds)} guilds:")
+    for guild in guilds:
+        logger.info(f"- {guild.name} (ID: {guild.id})")
+    
+    # Try to sync commands to all guilds the bot is in
+    if os.getenv('SYNC_COMMANDS', 'false').lower() == 'true':
+        logger.info("Auto-syncing commands...")
+        
+        # First, check for specific guild ID in env var
+        guild_id = os.getenv('GUILD_ID')
+        if is_valid_guild_id(guild_id):
+            try:
+                # Sync to specific guild first
+                guild = discord.Object(id=int(guild_id))
+                await bot.tree.sync(guild=guild)
+                logger.info(f"Commands synced to specified guild ID: {guild_id}")
+            except Exception as e:
+                logger.error(f"Error syncing to specified guild: {e}")
+        
+        # Then try to sync to all current guilds
+        for guild in guilds:
+            try:
+                guild_obj = discord.Object(id=guild.id)
+                await bot.tree.sync(guild=guild_obj)
+                logger.info(f"Commands synced to guild: {guild.name} (ID: {guild.id})")
+            except Exception as e:
+                logger.error(f"Error syncing to guild {guild.name}: {e}")
+    else:
+        logger.info("Automatic command sync is disabled. Use !sync in your server to manually sync commands.")
+
 # Admin users who can remove reputation
 ADMIN_USERS = [
     # Add your user IDs here
-    123456789012345678,  # Example user ID
+    1109714845768618044,  # Example user ID
 ]
 
 # Cooldown settings
