@@ -19,7 +19,7 @@ ADMIN_USERS = [
 
 # Cooldown dictionary to track users' last rep time (user_id -> timestamp)
 rep_cooldowns = {}
-COOLDOWN_SECONDS = 60 * 60  # 1 hour
+COOLDOWN_SECONDS = 60  # 1 min
 
 class LeaderboardView(View):
     """Interactive view for leaderboard navigation."""

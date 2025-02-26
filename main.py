@@ -59,10 +59,34 @@ async def on_ready():
     await bot.load_extension("cogs.reputation")
     logger.info("Reputation cog loaded")
     
-    # Sync commands
-    logger.info("Syncing commands...")
-    await bot.tree.sync()
-    logger.info("Commands synced successfully")
+    # Sync commands if SYNC_COMMANDS env var is set to true
+    if os.getenv('SYNC_COMMANDS', 'false').lower() == 'true':
+        logger.info("Auto-syncing commands...")
+        
+        # Sync to specific guild if GUILD_ID is set
+        if os.getenv('GUILD_ID'):
+            guild = discord.Object(id=int(os.getenv('GUILD_ID')))
+            await bot.tree.sync(guild=guild)
+            logger.info(f"Commands synced to guild ID: {os.getenv('GUILD_ID')}")
+        else:
+            await bot.tree.sync()
+            logger.info("Commands synced globally")
+    else:
+        logger.info("Skipping command sync. Run register_commands.py to sync commands manually.")
+
+# Manual command sync command (owner only)
+@bot.command(name="sync", hidden=True)
+@commands.is_owner()
+async def sync_commands(ctx, guild_id: str = None):
+    """Sync slash commands (Bot owner only)"""
+    if guild_id:
+        guild = discord.Object(id=int(guild_id))
+        bot.tree.copy_global_to(guild=guild)
+        await bot.tree.sync(guild=guild)
+        await ctx.send(f"Commands synced to guild ID: {guild_id}")
+    else:
+        await bot.tree.sync()
+        await ctx.send("Commands synced globally (may take up to an hour to propagate)")
 
 # Run the bot
 if __name__ == "__main__":
