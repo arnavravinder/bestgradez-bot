@@ -13,23 +13,19 @@ from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# Load environment variables
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('rep_bot')
 
-# Helper function to validate guild IDs
 def is_valid_guild_id(guild_id_str):
     """Check if a string is a valid guild ID."""
     if not guild_id_str:
         return False
     try:
-        # Guild IDs are numeric and usually 17-19 digits
         guild_id = int(guild_id_str)
         return 10000000000000000 <= guild_id <= 9999999999999999999
     except ValueError:
@@ -37,13 +33,12 @@ def is_valid_guild_id(guild_id_str):
 
 # Admin users who can remove reputation
 ADMIN_USERS = [
-    # Add your user IDs here
-    123456789012345678,  # Example user ID
+    1109714845768618044,  # Example user ID
 ]
 
 # Cooldown settings
 rep_cooldowns = {}  # user_id -> timestamp
-COOLDOWN_SECONDS = 60 * 60  # 1 hour
+COOLDOWN_SECONDS = 60  # 1 min
 
 # Initialize Firebase
 try:
