@@ -1,1 +1,0 @@
-# cogs package initialization
