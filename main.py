@@ -76,6 +76,45 @@ intents.members = True
 # Create bot instance
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Rep trigger words - without spaces for better detection
+rep_triggers = ['thanks', 'ty', 'tysm', 'thank you', 'appreciated', 'thx']
+
+def contains_trigger_word(content: str) -> bool:
+    """
+    Check if content contains any trigger words with proper word boundary detection.
+    This avoids false positives like "party" matching "ty".
+    """
+    content_lower = content.lower()
+    
+    for trigger in rep_triggers:
+        # Find all occurrences of the trigger
+        start_pos = 0
+        while True:
+            # Find the next occurrence
+            pos = content_lower.find(trigger, start_pos)
+            if pos == -1:  # No more occurrences
+                break
+                
+            # Check if it's a standalone word
+            before_pos = pos - 1
+            after_pos = pos + len(trigger)
+            
+            # Check character before (space or start of string)
+            before_ok = before_pos < 0 or content_lower[before_pos].isspace() or not content_lower[before_pos].isalnum()
+            
+            # Check character after (space or end of string)
+            after_ok = after_pos >= len(content_lower) or content_lower[after_pos].isspace() or not content_lower[after_pos].isalnum()
+            
+            # If it's a standalone word, return True
+            if before_ok and after_ok:
+                return True
+                
+            # Move to check next occurrence
+            start_pos = pos + 1
+    
+    # No trigger words found
+    return False
+
 # Firebase helper functions
 async def give_rep(guild_id: str, user_id: str, channel_id: str, 
                    channel_name: str, given_by: str) -> bool:
@@ -89,86 +128,82 @@ async def give_rep(guild_id: str, user_id: str, channel_id: str,
         channel_doc_id = f"{guild_id}_{channel_id}"
         channel_ref = channels_collection.document(channel_doc_id)
         
-        # Transaction to ensure data consistency
-        @firestore.transactional
-        def transaction_update(transaction, user_ref, channel_ref):
-            user_doc = user_ref.get(transaction=transaction)
-            
-            if not user_doc.exists:
-                # Initialize user document
-                transaction.set(user_ref, {
-                    'guild_id': guild_id,
-                    'user_id': user_id,
-                    'count': 1,
-                    'channels': {
-                        channel_id: {
-                            'name': channel_name,
-                            'count': 1
-                        }
-                    },
-                    'given_by': {given_by: 1}
-                })
-            else:
-                # Update user document
-                user_data = user_doc.to_dict()
-                
-                # Update total count
-                new_count = user_data.get('count', 0) + 1
-                
-                # Update channel counts
-                channels = user_data.get('channels', {})
-                if channel_id in channels:
-                    channels[channel_id]['count'] = channels[channel_id].get('count', 0) + 1
-                    # Update channel name in case it changed
-                    channels[channel_id]['name'] = channel_name
-                else:
-                    channels[channel_id] = {'name': channel_name, 'count': 1}
-                
-                # Update given_by counts
-                given_by_dict = user_data.get('given_by', {})
-                given_by_dict[given_by] = given_by_dict.get(given_by, 0) + 1
-                
-                transaction.update(user_ref, {
-                    'count': new_count,
-                    'channels': channels,
-                    'given_by': given_by_dict
-                })
-            
-            # Update channel document
-            channel_doc = channel_ref.get(transaction=transaction)
-            
-            if not channel_doc.exists:
-                # Initialize channel document
-                transaction.set(channel_ref, {
-                    'guild_id': guild_id,
-                    'channel_id': channel_id,
-                    'channel_name': channel_name,
-                    'users': {user_id: 1},
-                    'total_reps': 1
-                })
-            else:
-                # Update channel document
-                channel_data = channel_doc.to_dict()
-                
-                # Update total count
-                new_total = channel_data.get('total_reps', 0) + 1
-                
-                # Update user counts
-                users = channel_data.get('users', {})
-                users[user_id] = users.get(user_id, 0) + 1
-                
-                # Update channel name in case it changed
-                transaction.update(channel_ref, {
-                    'channel_name': channel_name,
-                    'total_reps': new_total,
-                    'users': users
-                })
-            
-            return True
+        # Instead of using a transaction, we'll use get() and set/update directly
+        # This avoids the "read after write" transaction error
         
-        # Execute transaction
-        result = transaction_update(db.transaction(), user_ref, channel_ref)
-        return result
+        # Get user document
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            # Initialize user document
+            user_ref.set({
+                'guild_id': guild_id,
+                'user_id': user_id,
+                'count': 1,
+                'channels': {
+                    channel_id: {
+                        'name': channel_name,
+                        'count': 1
+                    }
+                },
+                'given_by': {given_by: 1}
+            })
+        else:
+            # Update user document
+            user_data = user_doc.to_dict()
+            
+            # Update total count
+            new_count = user_data.get('count', 0) + 1
+            
+            # Update channel counts
+            channels = user_data.get('channels', {})
+            if channel_id in channels:
+                channels[channel_id]['count'] = channels[channel_id].get('count', 0) + 1
+                # Update channel name in case it changed
+                channels[channel_id]['name'] = channel_name
+            else:
+                channels[channel_id] = {'name': channel_name, 'count': 1}
+            
+            # Update given_by counts
+            given_by_dict = user_data.get('given_by', {})
+            given_by_dict[given_by] = given_by_dict.get(given_by, 0) + 1
+            
+            user_ref.update({
+                'count': new_count,
+                'channels': channels,
+                'given_by': given_by_dict
+            })
+        
+        # Get channel document
+        channel_doc = channel_ref.get()
+        
+        if not channel_doc.exists:
+            # Initialize channel document
+            channel_ref.set({
+                'guild_id': guild_id,
+                'channel_id': channel_id,
+                'channel_name': channel_name,
+                'users': {user_id: 1},
+                'total_reps': 1
+            })
+        else:
+            # Update channel document
+            channel_data = channel_doc.to_dict()
+            
+            # Update total count
+            new_total = channel_data.get('total_reps', 0) + 1
+            
+            # Update user counts
+            users = channel_data.get('users', {})
+            users[user_id] = users.get(user_id, 0) + 1
+            
+            channel_ref.update({
+                'channel_name': channel_name,
+                'total_reps': new_total,
+                'users': users
+            })
+        
+        return True
         
     except Exception as e:
         logger.error(f"Error giving rep: {e}")
@@ -606,9 +641,6 @@ async def create_leaderboard_embed(
     
     return embed
 
-# Rep trigger words
-rep_triggers = ['thanks', 'ty', 'tysm', 'thank you', 'appreciated']
-
 # Events
 @bot.event
 async def on_ready():
@@ -665,16 +697,21 @@ async def on_message(message: discord.Message):
     # Skip if not in a guild
     if not message.guild:
         return
-        
+    
+    # Process commands first - VERY IMPORTANT!
+    await bot.process_commands(message)
+    
     # Skip if no mentions
     if not message.mentions:
         return
-        
-    # Check if message contains a trigger word
-    content_lower = message.content.lower()
-    if not any(trigger in content_lower for trigger in rep_triggers):
+    
+    # Check if message contains a trigger word using our improved detection
+    if not contains_trigger_word(message.content):
         return
-        
+    
+    # Log that we detected a valid trigger word
+    logger.info(f"Detected rep trigger in message: {message.content}")
+    
     # Check for cooldown
     if is_on_cooldown(message.author.id):
         remaining = get_cooldown_remaining(message.author.id)
@@ -695,11 +732,15 @@ async def on_message(message: discord.Message):
     
     if not valid_mentions:
         return
+    
+    # Log valid mentions
+    logger.info(f"Valid mentions: {[user.name for user in valid_mentions]}")
         
     # Give rep to each valid mentioned user
     successful_mentions = []
     
     for user in valid_mentions:
+        logger.info(f"Giving rep to {user.name} from {message.author.name}")
         result = await give_rep(
             str(message.guild.id),
             str(user.id),
@@ -721,9 +762,6 @@ async def on_message(message: discord.Message):
         
         # Apply cooldown
         update_cooldown(message.author.id)
-    
-    # Process commands
-    await bot.process_commands(message)
 
 # Command Sync
 @bot.command(name="sync")
@@ -794,6 +832,7 @@ async def give_rep_command(
     await interaction.response.defer(ephemeral=False)
     
     # Give rep
+    logger.info(f"Giving rep via slash command: {interaction.user.name} -> {user.name}")
     result = await give_rep(
         str(interaction.guild_id),
         str(user.id),
