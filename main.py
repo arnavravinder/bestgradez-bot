@@ -2,6 +2,7 @@ import os
 import logging
 import asyncio
 import datetime
+import requests
 from typing import Dict, List, Optional, Union, Literal
 
 import discord
@@ -1052,6 +1053,54 @@ async def remove_rep_command(
             f"⚠️ **Error**: {user.mention} has no reputation points to remove.",
             ephemeral=True
         )
+
+@bot.tree.command(name="website", description="Get details about BestGradez and its features.")
+async def website(interaction: discord.Interaction):
+    """Display information about BestGradez and its features."""
+    embed = discord.Embed(
+        title="\U0001F48E Welcome to BestGradez! \U0001F48E",
+        description=(
+            "Welcome to **BestGradez**, the most **reliable and efficient** server for generating **topical past papers** and **notes** directly from our website! \U0001F3AF\n\n"
+            "Whether you're preparing for exams or just want to **master specific topics**, BestGradez provides you with **high-quality, well-organized, and up-to-date** study materials to ensure **success**. \U0001F3C6\n\n"
+            "\U0001F31F **Why Choose BestGradez?**\n"
+            "\U0001F539 **Topical Past Papers** – Access a vast collection of categorized past papers for focused revision.\n"
+            "\U0001F539 **Comprehensive Notes** – Get well-structured notes covering key concepts in various subjects.\n"
+            "\U0001F539 **Fast & Reliable** – Instantly generate the resources you need with ease.\n"
+            "\U0001F539 **Exam Success Guaranteed** – Improve your understanding and boost your grades effortlessly.\n\n"
+            "\U0001F680 **Join BestGradez today and take your studies to the next level with the trusted source for past papers and study notes!** \U0001F4DA"
+        ),
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="\U0001F30D Visit Us!", value="\U0001F517 [BestGradez Website](https://bestgradez.com/)", inline=True)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="checkwebsite", description="Check if BestGradez website is accessible.")
+async def check_website(interaction: discord.Interaction):
+    """Check if the BestGradez website is accessible."""
+    try:
+        response = requests.get("https://bestgradez.com/")
+        if response.status_code == 200:
+            embed = discord.Embed(
+                title="\u2705 Website Status",
+                description="Yes! **BestGradez** is **up and running smoothly**. [Visit us now!](https://bestgradez.com/)",
+                color=discord.Color.green()
+            )
+        else:
+            embed = discord.Embed(
+                title="\u274C Website Status",
+                description="Unfortunately, **BestGradez** is currently unavailable. Please try again later.",
+                color=discord.Color.red()
+            )
+        await interaction.response.send_message(embed=embed)
+    except requests.exceptions.RequestException:
+        embed = discord.Embed(
+            title="\u26A0\uFE0F Website Status",
+            description="There was an error trying to access **BestGradez**. It might be down at the moment.",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed)
+
+
 
 # Run the bot
 if __name__ == "__main__":
